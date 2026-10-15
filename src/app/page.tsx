@@ -1,69 +1,127 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo } from "react";
+import ExerciseFigure from "@/components/ExerciseFigure";
+import { EXERCISE_BY_ID } from "@/data/exercises";
+import { getPlan } from "@/lib/db";
+import { WEEKDAYS_SHORT, dayKey } from "@/lib/dates";
+import { usePlan, useSessionDays, useSessions } from "@/lib/hooks";
+import { currentStreak, isPlannedDay, momentOfDay, pickDailyRoutine, weekProgress } from "@/lib/plan";
+import { routineMinutes } from "@/lib/routine";
+
+const GREETING = { manana: "Buen día", dia: "Buenas tardes", noche: "Buenas noches" } as const;
+
+export default function TodayPage() {
+  const router = useRouter();
+  const plan = usePlan();
+  const sessions = useSessions();
+  const sessionDays = useSessionDays(sessions);
+
+  useEffect(() => {
+    if (plan !== null) return;
+    // Se vuelve a leer de la base: esta pantalla puede quedar montada en segundo plano
+    // con un valor viejo mientras se completa la configuración inicial.
+    let cancelled = false;
+    void getPlan().then((fresh) => {
+      if (!fresh && !cancelled) router.replace("/bienvenida");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [plan, router]);
+
+  const routine = useMemo(
+    () => (plan && sessions ? pickDailyRoutine(plan, sessions) : null),
+    [plan, sessions],
+  );
+
+  if (!plan || !sessions || !routine) return <div className="h-64" aria-busy />;
+
+  const today = new Date();
+  const doneToday = sessionDays.has(dayKey(today));
+  const streak = currentStreak(plan, sessionDays, today);
+  const week = weekProgress(plan, sessionDays, today);
+  const firstExercise = EXERCISE_BY_ID.get(routine.steps[0].exerciseId);
+  const planned = isPlannedDay(plan, today);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="space-y-5">
+      <header>
+        <p className="text-muted">{GREETING[momentOfDay(today)]}</p>
+        <h1 className="text-3xl font-bold">
+          {doneToday ? "Ya estiraste hoy" : planned ? "Tu rutina de hoy" : "Hoy es día libre"}
+        </h1>
+      </header>
+
+      <section className="card space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+              {doneToday ? "Si querés otra" : "Sugerida para vos"}
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold leading-tight">{routine.name}</h2>
+            <p className="mt-1 text-sm text-muted">
+              {routineMinutes(routine)} min · {routine.steps.length} ejercicios
+            </p>
+          </div>
+          {firstExercise && <ExerciseFigure position={firstExercise.position} className="h-20 w-20 shrink-0" />}
+        </div>
+        <p className="text-sm">{routine.description}</p>
+        <div className="flex gap-2">
+          <Link href={`/sesion/${routine.id}`} className="btn-primary flex-1">
+            Empezar
+          </Link>
+          <Link href={`/rutinas/${routine.id}`} className="btn-ghost">
+            Ver
+          </Link>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3">
+        <div className="card">
+          <p className="text-sm text-muted">Racha</p>
+          <p className="text-3xl font-bold">
+            {streak} <span className="text-base font-normal text-muted">{streak === 1 ? "día" : "días"}</span>
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="card">
+          <p className="text-sm text-muted">Esta semana</p>
+          <p className="text-3xl font-bold">
+            {week.done}
+            <span className="text-base font-normal text-muted"> / {week.goal}</span>
+          </p>
         </div>
-      </main>
+      </section>
+
+      <section className="card">
+        <ol className="flex justify-between">
+          {week.days.map((d) => (
+            <li key={d.key} className="flex flex-col items-center gap-2">
+              <span className={`text-xs ${d.isToday ? "font-bold text-ink" : "text-muted"}`}>
+                {WEEKDAYS_SHORT[d.date.getDay()]}
+              </span>
+              <span
+                className={`flex h-9 w-9 items-center justify-center rounded-full text-sm ${
+                  d.done
+                    ? "bg-accent text-accent-ink"
+                    : d.planned
+                      ? "border-2 border-dashed border-accent/50"
+                      : "bg-surface-2 text-muted"
+                } ${d.isToday ? "ring-2 ring-warm ring-offset-2 ring-offset-surface" : ""}`}
+                aria-label={d.done ? "hecho" : d.planned ? "planificado" : "libre"}
+              >
+                {d.done ? "✓" : d.date.getDate()}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <Link href="/rutinas" className="block text-center text-sm font-semibold text-accent">
+        Elegir otra rutina
+      </Link>
     </div>
   );
 }
